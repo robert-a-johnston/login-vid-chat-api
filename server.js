@@ -1,7 +1,16 @@
 // require necessary NPM packages
 const express = require('express')
+// instantiate express application object
+const app = express()
 const mongoose = require('mongoose')
+const server = require("http").createServer(app)
 const cors = require('cors')
+const io = require('socket.io')(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+})
 
 // require route files
 const exampleRoutes = require('./app/routes/example_routes')
@@ -32,8 +41,7 @@ mongoose.connect(db, {
   useUnifiedTopology: true
 })
 
-// instantiate express application object
-const app = express()
+
 
 // set CORS headers on response from this API using the `cors` NPM package
 // `CLIENT_ORIGIN` is an environment variable that will be set on Heroku
@@ -41,6 +49,27 @@ app.use(cors({ origin: process.env.CLIENT_ORIGIN || `http://localhost:${clientDe
 
 // define port for API to run on
 const port = process.env.PORT || serverDevPort
+
+// socket io
+app.get("/", (req, res) => {
+  res.send('Server is running')
+})
+
+io.on('connection', (socket) => {
+  socket.emit('me', socket.id)
+
+  socket.on('disconnect', () => {
+    socket.broadcast.emit("call ended")
+  })
+
+  socket.on("callUser", ({ userToCall, signalData, from, name}) => {
+    io.to(userToCall).emit("callUser", { signal: signalData, from, name})
+  })
+
+  socket.on("answerCall", (data) => {
+    io.to(data.to).emit("callAccepted", data.signal)
+  })
+})
 
 // register passport authentication middleware
 app.use(auth)
@@ -68,6 +97,8 @@ app.use(errorHandler)
 app.listen(port, () => {
   console.log('listening on port ' + port)
 })
+
+
 
 // needed for testing
 module.exports = app
